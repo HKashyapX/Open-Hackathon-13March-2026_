@@ -6,7 +6,6 @@ import threading
 app = FastAPI()
 node = aegis_node.AegisNode()
 
-# Allow your friend's React UI to talk to this Python server
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -16,19 +15,24 @@ app.add_middleware(
 
 @app.on_event("startup")
 def startup():
-    # Start the listening thread for peer discovery
     threading.Thread(target=node.listen, daemon=True).start()
 
 @app.get("/peers")
 def get_peers():
-    # Return the list of IDs discovered on the network
     return {"peers": list(node.peers.keys())}
 
 @app.post("/send")
-def send_fragmented_msg(receiver_id: str = Body(...), message: str = Body(...)):
-    # Trigger the 3-part fragmentation logic
-    node.fragment_and_send(receiver_id, message)
-    return {"status": "Message split and broadcasted to mesh"}
+def send_fragmented_msg(data: dict = Body(...)):
+    # Extracting from the JSON body sent by your frontend
+    receiver_id = data.get("receiver_id")
+    message = data.get("message")
+    
+    if not receiver_id or not message:
+        return {"error": "Missing receiver_id or message"}
+
+    # SYNCED: This now matches the function name in aegis_node.py
+    node.send_hop_message(message, receiver_id)
+    return {"status": f"Message '{message}' sharded and sent to {receiver_id}"}
 
 if __name__ == "__main__":
     import uvicorn
