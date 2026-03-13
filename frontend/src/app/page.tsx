@@ -1,31 +1,55 @@
 "use client";
 import React, { useState, useEffect } from 'react';
-import { Shield, Radio, Send, Activity, Lock } from 'lucide-react';
+import { Shield, Radio, Send, Activity, Lock, Upload, Download } from 'lucide-react';
+
+const API = "http://10.213.230.220:8000";
+
+interface Message {
+  direction: "sent" | "received";
+  peer: string;
+  text: string;
+  time: string;
+}
 
 export default function AegisDashboard() {
   const [peers, setPeers] = useState<string[]>([]);
   const [status, setStatus] = useState("SCANNING");
   const [message, setMessage] = useState("");
+  const [messages, setMessages] = useState<Message[]>([]);
 
   useEffect(() => {
     const fetchPeers = async () => {
       try {
-        const res = await fetch('http://localhost:8000/peers');
+        const res = await fetch(`${API}/peers`);
         const data = await res.json();
         setPeers(data.peers || []);
         setStatus(data.peers.length > 0 ? "MESH_ACTIVE" : "SCANNING");
-      } catch (err) { setStatus("OFFLINE"); }
+      } catch { setStatus("OFFLINE"); }
     };
-    const interval = setInterval(fetchPeers, 2000);
+
+    const fetchMessages = async () => {
+      try {
+        const res = await fetch(`${API}/messages`);
+        const data = await res.json();
+        setMessages(data.messages || []);
+      } catch { }
+    };
+
+    const interval = setInterval(() => {
+      fetchPeers();
+      fetchMessages();
+    }, 2000);
+    fetchPeers();
+    fetchMessages();
     return () => clearInterval(interval);
   }, []);
 
   const handleSend = async () => {
     if (!message || peers.length === 0) return;
-    await fetch('http://localhost:8000/send', {
+    await fetch(`${API}/send`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ receiver_id: peers[0], message: message })
+      body: JSON.stringify({ receiver_id: peers[0], message })
     });
     setMessage("");
   };
@@ -67,26 +91,54 @@ export default function AegisDashboard() {
           </div>
         </div>
 
-        {/* Terminal */}
+        {/* Right column */}
         <div className="lg:col-span-2 space-y-6">
+          {/* Send panel */}
           <div className="bg-gradient-to-br from-blue-600/20 to-purple-600/20 border border-blue-500/20 rounded-2xl p-8">
             <div className="flex items-center gap-2 mb-4 text-blue-400">
               <Lock className="w-4 h-4" />
               <span className="text-xs font-bold uppercase tracking-widest">Secure Uplink</span>
             </div>
-            <textarea 
+            <textarea
               value={message}
               onChange={(e) => setMessage(e.target.value)}
               placeholder="Inject message for fragmentation..."
-              className="w-full h-40 bg-black/40 border border-white/10 rounded-xl p-4 text-lg text-white placeholder:text-slate-600 focus:outline-none focus:border-blue-500/50 transition-all"
+              className="w-full h-32 bg-black/40 border border-white/10 rounded-xl p-4 text-lg text-white placeholder:text-slate-600 focus:outline-none focus:border-blue-500/50 transition-all"
             />
-            <button 
+            <button
               onClick={handleSend}
-              className="mt-4 w-full bg-blue-600 hover:bg-blue-500 text-white font-bold py-4 rounded-xl flex items-center justify-center gap-3 transition-all shadow-lg shadow-blue-500/20"
+              disabled={peers.length === 0 || !message}
+              className="mt-4 w-full bg-blue-600 hover:bg-blue-500 disabled:opacity-30 disabled:cursor-not-allowed text-white font-bold py-4 rounded-xl flex items-center justify-center gap-3 transition-all shadow-lg shadow-blue-500/20"
             >
               <Send className="w-5 h-5" />
               INITIATE BROADCAST
             </button>
+          </div>
+
+          {/* Message log */}
+          <div className="bg-white/5 border border-white/10 rounded-2xl p-6 backdrop-blur-xl">
+            <h2 className="text-sm font-bold uppercase tracking-widest text-slate-400 mb-4">Transmission Log</h2>
+            <div className="space-y-2 max-h-64 overflow-y-auto">
+              {messages.length === 0 ? (
+                <p className="text-xs text-slate-500 text-center py-6">No transmissions yet...</p>
+              ) : (
+                [...messages].reverse().map((m, i) => (
+                  <div key={i} className={`flex items-start gap-3 p-3 rounded-xl border ${m.direction === "sent" ? "border-blue-500/20 bg-blue-500/5" : "border-emerald-500/20 bg-emerald-500/5"}`}>
+                    {m.direction === "sent"
+                      ? <Upload className="w-4 h-4 text-blue-400 mt-0.5 shrink-0" />
+                      : <Download className="w-4 h-4 text-emerald-400 mt-0.5 shrink-0" />
+                    }
+                    <div className="flex-1 min-w-0">
+                      <p className="text-xs text-slate-500 mb-0.5">
+                        {m.direction === "sent" ? `YOU → ${m.peer}` : `${m.peer} → YOU`}
+                        <span className="ml-2 opacity-50">{m.time}</span>
+                      </p>
+                      <p className="text-sm text-white font-mono break-words">{m.text}</p>
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
           </div>
         </div>
       </div>

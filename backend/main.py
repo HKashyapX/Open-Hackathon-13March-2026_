@@ -2,10 +2,27 @@ from fastapi import FastAPI, Body
 from fastapi.middleware.cors import CORSMiddleware
 import aegis_node
 import threading
+import time
+import uvicorn
+from contextlib import asynccontextmanager
 
-app = FastAPI()
-node = aegis_node.AegisNode()
+MY_IP = "10.213.230.220"       # ← Node Beta: "10.213.230.200"
+NODE_NAME = "Node-Alpha"       # ← Node Beta: "Node-Beta"
 
+node = aegis_node.AegisNode(port=5005, node_name=NODE_NAME, local_ip=MY_IP)
+
+def run_background():
+    threading.Thread(target=node.listen, daemon=True).start()
+    while True:
+        node.broadcast_presence()
+        time.sleep(5)
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    threading.Thread(target=run_background, daemon=True).start()
+    yield
+
+app = FastAPI(lifespan=lifespan)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -13,27 +30,22 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-@app.on_event("startup")
-def startup():
-    threading.Thread(target=node.listen, daemon=True).start()
-
 @app.get("/peers")
 def get_peers():
     return {"peers": list(node.peers.keys())}
 
+@app.get("/messages")
+def get_messages():
+    return {"messages": node.message_log}
+
 @app.post("/send")
 def send_fragmented_msg(data: dict = Body(...)):
-    # Extracting from the JSON body sent by your frontend
     receiver_id = data.get("receiver_id")
     message = data.get("message")
-    
     if not receiver_id or not message:
-        return {"error": "Missing receiver_id or message"}
-
-    # SYNCED: This now matches the function name in aegis_node.py
+        return {"error": "Missing data"}
     node.send_hop_message(message, receiver_id)
-    return {"status": f"Message '{message}' sharded and sent to {receiver_id}"}
+    return {"status": "sent"}
 
 if __name__ == "__main__":
-    import uvicorn
     uvicorn.run(app, host="0.0.0.0", port=8000)
