@@ -40,11 +40,23 @@ def get_messages():
 
 @app.post("/send")
 def send_fragmented_msg(data: dict = Body(...)):
-    receiver_id = data.get("receiver_id")
+    receiver_id = data.get("receiver_id", "ALL")
     message = data.get("message")
-    if not receiver_id or not message:
+    
+    if not message:
         return {"error": "Missing data"}
-    node.send_hop_message(message, receiver_id)
+
+    if receiver_id == "ALL":
+        targets = list(node.peers.keys())
+    else:
+        targets = [receiver_id] if receiver_id in node.peers else []
+
+    if not targets:
+        return {"error": "No valid targets"}
+
+    for target in targets:
+        node.send_hop_message(message, target)
+        
     return {"status": "sent"}
 
 if __name__ == "__main__":
